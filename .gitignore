@@ -1,0 +1,6 @@
+*.exe
+*.test
+*.out
+_obj/
+.idea/
+.claude/settings.local.json
