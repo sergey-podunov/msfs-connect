@@ -1,4 +1,4 @@
-# Makefile for msfs_connect
+# Makefile for msfs-connect
 
 # We use g++ because SimConnect.h uses C++ features
 export CC = g++

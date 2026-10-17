@@ -1,4 +1,4 @@
-module github.com/sergey-podunov/msfs_connect
+module github.com/sergey-podunov/msfs-connect
 
 go 1.25.5
 

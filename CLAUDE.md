@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-msfs_connect is a Go wrapper over the Microsoft Flight Simulator SimConnect SDK (`SimConnect.dll`). It is used by apps in the sibling folders (e.g. `../atc_freq`) via the Go workspace `../go.work`.
+msfs-connect is a Go wrapper over the Microsoft Flight Simulator SimConnect SDK (`SimConnect.dll`). It is used by apps in the sibling folders (e.g. `../atc_freq`) via the Go workspace `../go.work`.
 
-Package `simconnect` (`github.com/sergey-podunov/msfs_connect/simconnect`) contains:
+Package `simconnect` (`github.com/sergey-podunov/msfs-connect/simconnect`) contains:
 - `Connection` interface, `DllConnection` (real DLL calls via windows syscalls), `MockConnection` (testify/mock)
 - Generated `SIMCONNECT_*` types and consts (`defs_generated.go`)
 - `ExceptionName`, `CString` / `TrimCString`
