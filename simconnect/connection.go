@@ -25,6 +25,8 @@ type DllConnection struct {
 	requestDataOnSimObject     *windows.Proc
 	createSimulatedObject      *windows.Proc
 	createNonATCAircraft       *windows.Proc
+	mapClientEventToSimEvent   *windows.Proc
+	transmitClientEvent        *windows.Proc
 	getNextDispatch            *windows.Proc
 
 	handler uintptr
@@ -89,12 +91,19 @@ func NewConnection() (*DllConnection, error) {
 	if err != nil {
 		return nil, err
 	}
+	mapClientEvent, err := mustProc("SimConnect_MapClientEventToSimEvent")
+	if err != nil {
+		return nil, err
+	}
+	transmitClientEvent, err := mustProc("SimConnect_TransmitClientEvent")
+	if err != nil {
+		return nil, err
+	}
 	getDisp, err := mustProc("SimConnect_GetNextDispatch")
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Println("Connection initialized")
 	return &DllConnection{
 		dll:                        dll,
 		open:                       open,
@@ -108,6 +117,8 @@ func NewConnection() (*DllConnection, error) {
 		requestDataOnSimObject:     reqDataOnSimObject,
 		createSimulatedObject:      createSimObject,
 		createNonATCAircraft:       createNonATCAircraft,
+		mapClientEventToSimEvent:   mapClientEvent,
+		transmitClientEvent:        transmitClientEvent,
 		getNextDispatch:            getDisp,
 	}, nil
 }
@@ -233,6 +244,38 @@ func (connection *DllConnection) CreateNonATCAircraft(containerTitle string, tai
 		return fmt.Errorf("AICreateNonATCAircraft failed HRESULT=0x%08X", uint32(handlerResult))
 	}
 
+	return nil
+}
+
+func (connection *DllConnection) MapClientEventToSimEvent(eventID uint32, eventName string) error {
+	namePtr, err := CString(eventName)
+	if err != nil {
+		return err
+	}
+
+	handlerResult, _, _ := connection.mapClientEventToSimEvent.Call(
+		connection.handler,
+		uintptr(eventID),
+		uintptr(unsafe.Pointer(namePtr)),
+	)
+	if int32(handlerResult) != S_OK {
+		return fmt.Errorf("MapClientEventToSimEvent(%q) failed HRESULT=0x%08X", eventName, uint32(handlerResult))
+	}
+	return nil
+}
+
+func (connection *DllConnection) TransmitClientEvent(objectID, eventID, data, groupID, flags uint32) error {
+	handlerResult, _, _ := connection.transmitClientEvent.Call(
+		connection.handler,
+		uintptr(objectID),
+		uintptr(eventID),
+		uintptr(data),
+		uintptr(groupID),
+		uintptr(flags),
+	)
+	if int32(handlerResult) != S_OK {
+		return fmt.Errorf("TransmitClientEvent failed HRESULT=0x%08X", uint32(handlerResult))
+	}
 	return nil
 }
 

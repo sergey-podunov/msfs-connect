@@ -23,3 +23,5 @@ make test
 
 ## Misc
 Don't edit defs_generated.go directly. When some new consts or types from SimConnect.h are needed — add them to `simconnect/defs.go` and run `make generate`. `defs_generated.go` is committed so consumers can build without g++ and SimConnect.h.
+
+Keep comments sparse: no doc comment that restates the name or signature. Comment only what isn't obvious from the code: non-obvious behavior, constraints, the reason behind a decision.

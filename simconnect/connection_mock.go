@@ -62,6 +62,16 @@ func (m *MockConnection) CreateNonATCAircraft(containerTitle string, tailNumber 
 	return args.Error(0)
 }
 
+func (m *MockConnection) MapClientEventToSimEvent(eventID uint32, eventName string) error {
+	args := m.Called(eventID, eventName)
+	return args.Error(0)
+}
+
+func (m *MockConnection) TransmitClientEvent(objectID, eventID, data, groupID, flags uint32) error {
+	args := m.Called(objectID, eventID, data, groupID, flags)
+	return args.Error(0)
+}
+
 func (m *MockConnection) GetNextDispatch() (*SIMCONNECT_RECV, bool) {
 	args := m.Called()
 	if args.Get(0) == nil {
