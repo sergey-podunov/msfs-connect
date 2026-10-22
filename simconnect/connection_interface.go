@@ -14,5 +14,7 @@ type Connection interface {
 	CreateNonATCAircraft(containerTitle string, tailNumber string, initPos SIMCONNECT_DATA_INITPOSITION, requestID uint32) error
 	MapClientEventToSimEvent(eventID uint32, eventName string) error
 	TransmitClientEvent(objectID, eventID, data, groupID, flags uint32) error
-	GetNextDispatch() (*SIMCONNECT_RECV, bool)
+	SubscribeToSystemEvent(eventID uint32, name string) error
+	GetNextDispatch() (*SIMCONNECT_RECV, error)
+	GetLastSentPacketID() (uint32, error)
 }

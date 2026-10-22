@@ -72,10 +72,20 @@ func (m *MockConnection) TransmitClientEvent(objectID, eventID, data, groupID, f
 	return args.Error(0)
 }
 
-func (m *MockConnection) GetNextDispatch() (*SIMCONNECT_RECV, bool) {
+func (m *MockConnection) SubscribeToSystemEvent(eventID uint32, name string) error {
+	args := m.Called(eventID, name)
+	return args.Error(0)
+}
+
+func (m *MockConnection) GetNextDispatch() (*SIMCONNECT_RECV, error) {
 	args := m.Called()
 	if args.Get(0) == nil {
-		return nil, args.Bool(1)
+		return nil, args.Error(1)
 	}
-	return args.Get(0).(*SIMCONNECT_RECV), args.Bool(1)
+	return args.Get(0).(*SIMCONNECT_RECV), args.Error(1)
+}
+
+func (m *MockConnection) GetLastSentPacketID() (uint32, error) {
+	args := m.Called()
+	return args.Get(0).(uint32), args.Error(1)
 }

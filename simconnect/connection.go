@@ -8,7 +8,8 @@ import (
 )
 
 const (
-	S_OK = 0
+	S_OK   = 0
+	E_FAIL = 0x80004005
 )
 
 type DllConnection struct {
@@ -28,6 +29,8 @@ type DllConnection struct {
 	mapClientEventToSimEvent   *windows.Proc
 	transmitClientEvent        *windows.Proc
 	getNextDispatch            *windows.Proc
+	getLastSentPacketID        *windows.Proc
+	subscribeToSystemEvent     *windows.Proc
 
 	handler uintptr
 }
@@ -103,6 +106,14 @@ func NewConnection() (*DllConnection, error) {
 	if err != nil {
 		return nil, err
 	}
+	getLastSentPacketID, err := mustProc("SimConnect_GetLastSentPacketID")
+	if err != nil {
+		return nil, err
+	}
+	subscribeToSystemEvent, err := mustProc("SimConnect_SubscribeToSystemEvent")
+	if err != nil {
+		return nil, err
+	}
 
 	return &DllConnection{
 		dll:                        dll,
@@ -120,6 +131,8 @@ func NewConnection() (*DllConnection, error) {
 		mapClientEventToSimEvent:   mapClientEvent,
 		transmitClientEvent:        transmitClientEvent,
 		getNextDispatch:            getDisp,
+		getLastSentPacketID:        getLastSentPacketID,
+		subscribeToSystemEvent:     subscribeToSystemEvent,
 	}, nil
 }
 
@@ -131,7 +144,7 @@ func (connection *DllConnection) Open(name string) error {
 		0, 0, 0, 0,
 	)
 	if int32(r1) != S_OK || connection.handler == 0 {
-		return fmt.Errorf("SimConnect_Open failed HRESULT=0x%08X", uint32(r1))
+		return &HRESULTError{Op: "SimConnect_Open", Code: uint32(r1)}
 	}
 	return nil
 }
@@ -147,7 +160,7 @@ func (connection *DllConnection) AddField(field string, defineID uint32) error {
 		uintptr(unsafe.Pointer(fptr)),
 	)
 	if int32(handlerResult) != S_OK {
-		return fmt.Errorf("AddToFacilityDefinition(%q) failed HRESULT=0x%08X", field, uint32(handlerResult))
+		return &HRESULTError{Op: fmt.Sprintf("AddToFacilityDefinition(%q)", field), Code: uint32(handlerResult)}
 	}
 	return nil
 }
@@ -164,7 +177,7 @@ func (connection *DllConnection) RequestFacilityData(icao string, region string,
 		uintptr(unsafe.Pointer(regionPtr)),
 	)
 	if int32(handlerResult) != S_OK {
-		return fmt.Errorf("RequestFacilityData failed HRESULT=0x%08X", uint32(handlerResult))
+		return &HRESULTError{Op: "RequestFacilityData", Code: uint32(handlerResult)}
 	}
 
 	return nil
@@ -179,7 +192,7 @@ func (connection *DllConnection) RequestWeatherObservation(icao string, requestI
 		uintptr(unsafe.Pointer(icaoPtr)),
 	)
 	if int32(handlerResult) != S_OK {
-		return fmt.Errorf("RequestWeatherObservation failed HRESULT=0x%08X", uint32(handlerResult))
+		return &HRESULTError{Op: "RequestWeatherObservation", Code: uint32(handlerResult)}
 	}
 
 	return nil
@@ -198,7 +211,7 @@ func (connection *DllConnection) RequestCloudState(requestID uint32, minLat, min
 		0, // dwFlags
 	)
 	if int32(handlerResult) != S_OK {
-		return fmt.Errorf("RequestCloudState failed HRESULT=0x%08X", uint32(handlerResult))
+		return &HRESULTError{Op: "RequestCloudState", Code: uint32(handlerResult)}
 	}
 
 	return nil
@@ -217,7 +230,7 @@ func (connection *DllConnection) CreateSimulatedObject(containerTitle string, in
 		uintptr(requestID),
 	)
 	if int32(handlerResult) != S_OK {
-		return fmt.Errorf("AICreateSimulatedObject failed HRESULT=0x%08X", uint32(handlerResult))
+		return &HRESULTError{Op: "AICreateSimulatedObject", Code: uint32(handlerResult)}
 	}
 
 	return nil
@@ -241,7 +254,7 @@ func (connection *DllConnection) CreateNonATCAircraft(containerTitle string, tai
 		uintptr(requestID),
 	)
 	if int32(handlerResult) != S_OK {
-		return fmt.Errorf("AICreateNonATCAircraft failed HRESULT=0x%08X", uint32(handlerResult))
+		return &HRESULTError{Op: "AICreateNonATCAircraft", Code: uint32(handlerResult)}
 	}
 
 	return nil
@@ -259,7 +272,7 @@ func (connection *DllConnection) MapClientEventToSimEvent(eventID uint32, eventN
 		uintptr(unsafe.Pointer(namePtr)),
 	)
 	if int32(handlerResult) != S_OK {
-		return fmt.Errorf("MapClientEventToSimEvent(%q) failed HRESULT=0x%08X", eventName, uint32(handlerResult))
+		return &HRESULTError{Op: fmt.Sprintf("MapClientEventToSimEvent(%q)", eventName), Code: uint32(handlerResult)}
 	}
 	return nil
 }
@@ -274,13 +287,54 @@ func (connection *DllConnection) TransmitClientEvent(objectID, eventID, data, gr
 		uintptr(flags),
 	)
 	if int32(handlerResult) != S_OK {
-		return fmt.Errorf("TransmitClientEvent failed HRESULT=0x%08X", uint32(handlerResult))
+		return &HRESULTError{Op: "TransmitClientEvent", Code: uint32(handlerResult)}
 	}
 	return nil
 }
 
+// SubscribeToSystemEvent subscribes to a system event such as "Pause_EX1"; it arrives as SIMCONNECT_RECV_EVENT
+// with UEventID = eventID.
+func (connection *DllConnection) SubscribeToSystemEvent(eventID uint32, name string) error {
+	namePtr, err := CString(name)
+	if err != nil {
+		return err
+	}
+
+	handlerResult, _, _ := connection.subscribeToSystemEvent.Call(
+		connection.handler,
+		uintptr(eventID),
+		uintptr(unsafe.Pointer(namePtr)),
+	)
+	if int32(handlerResult) != S_OK {
+		return &HRESULTError{Op: fmt.Sprintf("SubscribeToSystemEvent(%q)", name), Code: uint32(handlerResult)}
+	}
+	return nil
+}
+
+// GetLastSentPacketID returns the ID of the last packet sent on this connection.
+// SIMCONNECT_RECV_EXCEPTION carries it in DwSendID, which is the only way to tell which call an exception belongs to.
+func (connection *DllConnection) GetLastSentPacketID() (uint32, error) {
+	var id uint32
+	handlerResult, _, _ := connection.getLastSentPacketID.Call(
+		connection.handler,
+		uintptr(unsafe.Pointer(&id)),
+	)
+	if int32(handlerResult) != S_OK {
+		return 0, &HRESULTError{Op: "GetLastSentPacketID", Code: uint32(handlerResult)}
+	}
+	return id, nil
+}
+
+// Close ends the session and releases the DLL; the connection can't be reused afterwards. Calling it again is a no-op.
 func (connection *DllConnection) Close() {
-	//todo connection.close.Call(connection.handler)
+	if connection.handler != 0 {
+		connection.close.Call(connection.handler)
+		connection.handler = 0
+	}
+	if connection.dll != nil {
+		connection.dll.Release()
+		connection.dll = nil
+	}
 }
 
 func (connection *DllConnection) AddToDataDefinition(defineID uint32, datumName string, unitsName string, datumType uint32) error {
@@ -299,11 +353,11 @@ func (connection *DllConnection) AddToDataDefinition(defineID uint32, datumName 
 		uintptr(unsafe.Pointer(datumPtr)),
 		uintptr(unsafe.Pointer(unitsPtr)),
 		uintptr(datumType),
-		0, // fEpsilon (default)
-		0, // DatumID (unused)
+		0,                 // fEpsilon (default)
+		SIMCONNECT_UNUSED, // DatumID: 0 would be a real ID, and a second field with it fails as DUPLICATE_ID
 	)
 	if int32(handlerResult) != S_OK {
-		return fmt.Errorf("AddToDataDefinition(%q) failed HRESULT=0x%08X", datumName, uint32(handlerResult))
+		return &HRESULTError{Op: fmt.Sprintf("AddToDataDefinition(%q)", datumName), Code: uint32(handlerResult)}
 	}
 	return nil
 }
@@ -317,7 +371,7 @@ func (connection *DllConnection) RequestDataOnSimObjectType(requestID, defineID 
 		uintptr(objectType),
 	)
 	if int32(handlerResult) != S_OK {
-		return fmt.Errorf("RequestDataOnSimObjectType failed HRESULT=0x%08X", uint32(handlerResult))
+		return &HRESULTError{Op: "RequestDataOnSimObjectType", Code: uint32(handlerResult)}
 	}
 	return nil
 }
@@ -335,12 +389,14 @@ func (connection *DllConnection) RequestDataOnSimObject(requestID, defineID, obj
 		0, // limit
 	)
 	if int32(handlerResult) != S_OK {
-		return fmt.Errorf("RequestDataOnSimObject failed HRESULT=0x%08X", uint32(handlerResult))
+		return &HRESULTError{Op: "RequestDataOnSimObject", Code: uint32(handlerResult)}
 	}
 	return nil
 }
 
-func (connection *DllConnection) GetNextDispatch() (*SIMCONNECT_RECV, bool) {
+// GetNextDispatch returns nil, nil when the queue is empty. SimConnect reports an empty queue with E_FAIL
+// (or S_OK and SIMCONNECT_RECV_ID_NULL), so only other HRESULTs are errors, e.g. a broken connection.
+func (connection *DllConnection) GetNextDispatch() (*SIMCONNECT_RECV, error) {
 	var ppData *SIMCONNECT_RECV
 	var cbData uint32
 
@@ -350,9 +406,13 @@ func (connection *DllConnection) GetNextDispatch() (*SIMCONNECT_RECV, bool) {
 		uintptr(unsafe.Pointer(&cbData)),
 	)
 
-	if int32(handlerResult) != S_OK || ppData == nil {
-		return nil, false
+	switch hr := uint32(handlerResult); {
+	case hr == E_FAIL:
+		return nil, nil
+	case int32(hr) != S_OK:
+		return nil, &HRESULTError{Op: "GetNextDispatch", Code: hr}
+	case ppData == nil || ppData.DwID == SIMCONNECT_RECV_ID_NULL:
+		return nil, nil
 	}
-
-	return ppData, true
+	return ppData, nil
 }
